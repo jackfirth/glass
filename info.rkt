@@ -1,12 +1,12 @@
 #lang info
 
-(define collection "racket-package-template")
+(define collection "glass")
 
 (define scribblings
   (list (list "main.scrbl"
               (list 'multi-page)
               (list 'library)
-              "racket-package-template")))
+              "glass")))
 
 (define deps
   (list "base"))
