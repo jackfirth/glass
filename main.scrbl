@@ -1,4 +1,76 @@
 #lang scribble/manual
 
+@(require (for-label racket/base
+                     glass
+                     glass/lens
+                     glass/prism
+                     glass/traversal)
+          (submod glass/private/scribble-cross-document-tech doc))
+
 @title{Glass: Composable Optics}
 @defmodule[glass]
+
+This is an experimental library for optics. An @deftech{optic} is an object for
+viewing one form of data, called the @deftech{subject}, in some other form,
+called a @deftech{focus}. Optics are bidirectional: in addition to viewing the
+focus, optics allow @emph{changing} the focus to get a new, updated subject.
+There are several different kinds of optics, each of which expresses a different
+relationship between subject and focus:
+
+@itemlist[
+ @item{@tech[#:key "lens"]{Lenses} focus on one small part of the subject, such
+  as a field of a struct. Other parts of the subject are left untouched when the
+  focus is changed. For example, the @racket[entry.key] lens focuses on the key
+  of an @rebellion-tech{entry} object, allowing you to change the key of an
+  entry.}
+
+ @item{@tech{Prisms} focus on one specific kind of subject, such as a subtype of
+  a struct. Other kinds of subjects are ignored. For example,
+  @racket[success-prism] focuses on successful @rebellion-tech{result} objects
+  and ignores failed ones, allowing you to change the values inside only
+  successful results.}
+
+ @item{@tech{Traversals} focus on several parts of the subject at once, such as
+  the characters of a string. Each focus can be updated to a new value, but a
+  traversal cannot change the total number of foci.}]
+
+I'm working on this library for fun as a hypothetical successor to the
+@racketmodname[lens #:indirect] library. I might put more work into it, or I
+might not. Absolutely no promise of backwards compatibility whatsoever. Caveat
+emptor.
+
+@section{Lenses}
+@defmodule[glass/lens]
+
+A @deftech{lens} is a type of @tech{optic} for focusing on small parts of a
+subject. A lens is built from a getter function, which extracts the focus from
+the subject, and a setter function, which takes a subject and a replacement for
+the focus and builds a new subject.
+
+@defproc[(lens? [v any/c]) boolean?]{
+ A predicate for @tech[#:key "lens"]{lenses}.}
+
+@section{Prisms}
+@defmodule[glass/prism]
+
+A @deftech{prism} is a type of @tech{optic} for focusing on a specific kind of
+subject and ignoring other kinds. A prism is built from a matching function,
+which focuses on subjects of the correct kind, and a casting function, which
+transforms a replacement focus back into the subject.
+
+@defproc[(prism? [v any/c]) boolean?]{
+ A predicate for @tech{prisms}.}
+
+@section{Traversals}
+@defmodule[glass/traversal]
+
+A @deftech{traversal} is a type of @tech{optic} for focusing on several parts of
+a subject at once. A traversal is built from a getter function, which extracts a
+list of foci from the subject, and a setter function, which takes a subject and
+a list of replacement foci and builds a new subject. Traversals are not allowed
+to change the number of foci when replacing them: if a traversal's getter views
+10 foci in a subject, then the traversal's setter will only accept lists of
+exactly 10 replacement foci.
+
+@defproc[(traversal? [v any/c]) boolean?]{
+ A predicate for @tech{traversals}.}
