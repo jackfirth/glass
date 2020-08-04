@@ -12,6 +12,9 @@
   [lens-get (-> lens? any/c any/c)]
   [lens-set (-> lens? any/c any/c any/c)]
   [lens/c (-> contract? contract? contract?)]
+  [lens-pipe (-> lens? ... lens?)]
+  [pair.first (lens/c pair? any/c)]
+  [pair.second (lens/c pair? any/c)]
   [entry.key (lens/c entry? any/c)]
   [entry.value (lens/c entry? any/c)]
   [byte.bit (-> (integer-in 0 7) (lens/c byte? bit?))]
@@ -21,7 +24,9 @@
 
 (require racket/bool
          racket/contract/combinator
+         racket/match
          rebellion/base/converter
+         rebellion/base/pair
          rebellion/base/symbol
          rebellion/binary/bit
          rebellion/binary/byte
@@ -188,6 +193,56 @@
     (check-equal? (lens-get symbol.string 'bar) "bar")
     (check-equal? (lens-set symbol.string 'unused "bar") 'bar)))
 
+(define (lens-pipe-getter outer-lens inner-lens)
+  (define outer-getter (lens-getter outer-lens))
+  (define inner-getter (lens-getter inner-lens))
+  (λ (subject) (inner-getter (outer-getter subject))))
+
+(define (lens-pipe-setter outer-lens inner-lens)
+  (define outer-getter (lens-getter outer-lens))
+  (define outer-setter (lens-setter outer-lens))
+  (define inner-setter (lens-setter inner-lens))
+  (λ (subject replacement)
+    (define outer-replacement (inner-setter (outer-getter subject) replacement))
+    (outer-setter subject outer-replacement)))
+
+(define (lens-pipe2 outer-lens inner-lens)
+  (define getter (lens-pipe-getter outer-lens inner-lens))
+  (define setter (lens-pipe-setter outer-lens inner-lens))
+  (make-lens getter setter #:name 'piped))
+
+(define (lens-pipe . lenses)
+  (match lenses
+    ['() identity-lens]
+    [(list lens) lens]
+    [(cons first-lens remaining-lenses)
+     (for/fold ([piped first-lens]) ([lens remaining-lenses])
+       (lens-pipe2 piped lens))]))
+
+(module+ test
+  (test-case (name-string lens-pipe)
+
+    (test-case "identity lens"
+      (check-equal? (lens-pipe) identity-lens))
+
+    (test-case "single lens"
+      (check-equal? (lens-pipe entry.key) entry.key))
+
+    (test-case "two lenses"
+      (define entry.value.first-bit (lens-pipe entry.value (byte.bit 0)))
+      (define data (entry 'a (byte 0 0 0 0 0 0 0 0)))
+      (define expected (entry 'a (byte 1 0 0 0 0 0 0 0)))
+      (check-equal? (lens-get entry.value.first-bit data) 0)
+      (check-equal? (lens-set entry.value.first-bit data 1) expected))
+
+    (test-case "many lenses"
+      (define entry.value.key.first-bit
+        (lens-pipe entry.value entry.key (byte.bit 0)))
+      (define data (entry 'a (entry (byte 0 0 0 0 0 0 0 0) 'b)))
+      (define expected (entry 'a (entry (byte 1 0 0 0 0 0 0 0) 'b)))
+      (check-equal? (lens-get entry.value.key.first-bit data) 0)
+      (check-equal? (lens-set entry.value.key.first-bit data 1) expected))))
+
 ;@------------------------------------------------------------------------------
 ;; Standard library lenses
 
@@ -199,6 +254,13 @@
     (check-equal? (lens-get identity-lens 4) 4)
     (check-equal? (lens-set identity-lens 'unused 3) 3)))
 
+(define/name pair.first
+  (make-lens pair-first (λ (p v) (pair v (pair-second p)))
+             #:name enclosing-variable-name))
+
+(define/name pair.second
+  (make-lens pair-second (λ (p v) (pair (pair-first p) v))
+             #:name enclosing-variable-name))
 
 (define/name entry.key
   (make-lens entry-key (λ (e k) (entry k (entry-value e)))
@@ -209,6 +271,14 @@
              #:name enclosing-variable-name))
 
 (module+ test
+  (test-case (name-string pair.first)
+    (check-equal? (lens-get pair.first (pair 'a 1)) 'a)
+    (check-equal? (lens-set pair.first (pair 'a 1) 'b) (pair 'b 1)))
+
+  (test-case (name-string pair.second)
+    (check-equal? (lens-get pair.second (pair 'a 1)) 1)
+    (check-equal? (lens-set pair.second (pair 'a 1) 2) (pair 'a 2)))
+
   (test-case (name-string entry.key)
     (check-equal? (lens-get entry.key (entry 'a 1)) 'a)
     (check-equal? (lens-set entry.key (entry 'a 1) 'b) (entry 'b 1)))

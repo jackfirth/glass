@@ -4,9 +4,12 @@
                      glass/lens
                      glass/prism
                      glass/traversal
-                     racket/base
+                     (except-in racket/base pair?)
                      racket/contract/base
+                     rebellion/base/pair
                      rebellion/base/symbol
+                     rebellion/binary/bit
+                     rebellion/binary/byte
                      rebellion/collection/entry
                      rebellion/type/tuple)
           (submod glass/private/scribble-cross-document-tech doc)
@@ -16,6 +19,8 @@
 @(define make-evaluator
    (make-module-sharing-evaluator-factory
     #:public (list 'glass/lens
+                   'rebellion/base/pair
+                   'rebellion/binary/byte
                    'rebellion/collection/entry
                    'rebellion/type/tuple)
     #:private (list 'racket/base)))
@@ -97,6 +102,38 @@ the focus and builds a new subject.
  @racket[subject-contract] and whose foci are checked with
  @racket[focus-contract].}
 
+@defthing[identity-lens lens?]{
+ The identity @tech{lens}, which focuses on the entire subject and replaces it
+ entirely when given a new focus.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (lens-get identity-lens 5)
+   (lens-set identity-lens 5 100))}
+
+@defproc[(lens-pipe [lens lens?] ...) lens?]{
+ Joins each @racket[lens] to the next, building a composed lens that focuses on
+ subjects by recursively focusing on the subject once with each lens from left
+ to right. If only one lens is given, it is returned unchanged, and if no lenses
+ are given, @racket[identity-lens] is returned.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (eval:no-prompt (define entry.key.first (lens-pipe entry.key pair.first)))
+   (lens-get entry.key.first (entry (pair 'a 'c) 5))
+   (lens-set entry.key.first (entry (pair 'a 'c) 5) 'f))}
+
+@deftogether[[
+ @defthing[pair.first (lens/c pair? any/c)]
+ @defthing[pair.second (lens/c pair? any/c)]]]{
+ Lenses that focus on the first and second values of a @rebellion-tech{pair},
+ respectively.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (lens-get pair.first (pair 4 8))
+   (lens-set pair.second (pair 4 8) 100))}
+
 @deftogether[[
  @defthing[entry.key (lens/c entry? any/c)]
  @defthing[entry.value (lens/c entry? any/c)]]]{
@@ -107,6 +144,15 @@ the focus and builds a new subject.
    #:eval (make-evaluator) #:once
    (lens-get entry.key (entry 'a 1))
    (lens-set entry.value (entry 'a 1) 5))}
+
+@defproc[(byte.bit [position (integer-in 0 7)]) (lens/c byte? bit?)]{
+ Constructs a @tech{lens} that focuses on the bit at @racket[position] in a
+ byte, with bit positions numbered from left to right.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (lens-get (byte.bit 7) (byte 1 1 1 1 1 1 1 0))
+   (lens-set (byte.bit 7) (byte 0 0 0 0 0 0 0 0) 1))}
 
 @section{Prisms}
 @defmodule[glass/prism]
