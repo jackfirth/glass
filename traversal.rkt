@@ -18,7 +18,8 @@
   [traversal-pipe (-> traversal? ... traversal?)]
   [list-traversal (traversal/c list? any/c)]
   [vector-traversal (traversal/c vector? any/c)]
-  [string-traversal (traversal/c string? char?)]))
+  [string-traversal (traversal/c string? char?)]
+  [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]))
 
 (require racket/bool
          racket/contract/combinator
@@ -344,3 +345,14 @@
       (check-equal?
        (traversal-set-all string-list-traversal fruits "AppleCoconutPlum")
        (list "Apple" "Coconut" "Plum")))))
+
+(define (traversal-map traversal subject mapper)
+  (define replacements
+    (transduce (traversal-get-all traversal subject)
+               (mapping mapper)
+               #:into into-list))
+  (traversal-set-all traversal subject replacements))
+
+(module+ test
+  (test-case (name-string traversal-map)
+    (check-equal? (traversal-map string-traversal "foo" char-upcase) "FOO")))
