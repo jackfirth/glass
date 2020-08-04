@@ -1,11 +1,24 @@
 #lang scribble/manual
 
-@(require (for-label racket/base
-                     glass
+@(require (for-label glass
                      glass/lens
                      glass/prism
-                     glass/traversal)
-          (submod glass/private/scribble-cross-document-tech doc))
+                     glass/traversal
+                     racket/base
+                     racket/contract/base
+                     rebellion/base/symbol
+                     rebellion/collection/entry
+                     rebellion/type/tuple)
+          (submod glass/private/scribble-cross-document-tech doc)
+          (submod glass/private/scribble-evaluator-factory doc)
+          scribble/example)
+
+@(define make-evaluator
+   (make-module-sharing-evaluator-factory
+    #:public (list 'glass/lens
+                   'rebellion/collection/entry
+                   'rebellion/type/tuple)
+    #:private (list 'racket/base)))
 
 @title{Glass: Composable Optics}
 @defmodule[glass]
@@ -49,6 +62,51 @@ the focus and builds a new subject.
 
 @defproc[(lens? [v any/c]) boolean?]{
  A predicate for @tech[#:key "lens"]{lenses}.}
+
+@defproc[
+ (make-lens
+  [getter (-> any/c any/c)]
+  [setter (-> any/c any/c any/c)]
+  [#:name name (or/c interned-symbol? #f) #f])
+ lens?]{
+ Constructs a @tech{lens} named @racket[name] that focuses on subjects by
+ calling @racket[getter] on the subject and updates the focus by calling
+ @racket[setter] with the subject and the replacement focus.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (eval:no-prompt
+    (define-tuple-type point (x y))
+    (define point.x
+      (make-lens point-x (λ (p x) (point x (point-y p))) #:name 'point.x)))
+
+   (lens-get point.x (point 4 7))
+   (lens-set point.x (point 4 7) 100))}
+
+@defproc[(lens-get [lens lens?] [subject any/c]) any/c]{
+ Returns the focus of @racket[lens] on @racket[subject].}
+
+@defproc[(lens-set [lens lens?] [subject any/c] [replacement any/c]) any/c]{
+ Updates @racket[subject] with @racket[lens] by replacing its focus with
+ @racket[replacement], returning an updated subject.}
+
+@defproc[(lens/c [subject-contract contract?] [focus-contract contract?])
+         contract?]{
+ A @reference-tech{contract combinator} for @tech[#:key "lens"]{lenses}. Creates
+ a contract that accepts lenses whose subjects are checked with
+ @racket[subject-contract] and whose foci are checked with
+ @racket[focus-contract].}
+
+@deftogether[[
+ @defthing[entry.key (lens/c entry? any/c)]
+ @defthing[entry.value (lens/c entry? any/c)]]]{
+ Lenses that focus on the key and value of an @rebellion-tech{entry},
+ respectively.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (lens-get entry.key (entry 'a 1))
+   (lens-set entry.value (entry 'a 1) 5))}
 
 @section{Prisms}
 @defmodule[glass/prism]
