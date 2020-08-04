@@ -15,20 +15,28 @@
   [traversal-count (-> traversal? any/c natural?)]
   [traversal-get-all (-> traversal? any/c list?)]
   [traversal-set-all (-> traversal? any/c (sequence/c any/c) any/c)]
+  [traversal-pipe (-> traversal? ... traversal?)]
   [list-traversal (traversal/c list? any/c)]
-  [vector-traversal (traversal/c vector? any/c)]))
+  [vector-traversal (traversal/c vector? any/c)]
+  [string-traversal (traversal/c string? char?)]))
 
 (require racket/bool
          racket/contract/combinator
+         racket/list
+         racket/match
          racket/math
          racket/sequence
+         rebellion/base/immutable-string
          rebellion/base/symbol
          rebellion/collection/immutable-vector
          rebellion/collection/list
          rebellion/private/contract-projection
          rebellion/private/impersonation
          rebellion/private/static-name
-         rebellion/type/object)
+         rebellion/streaming/reducer
+         rebellion/streaming/transducer
+         rebellion/type/object
+         rebellion/type/tuple)
 
 (module+ test
   (require (submod "..")
@@ -89,6 +97,13 @@
    #:counter vector-length
    #:name enclosing-variable-name))
 
+(define/name string-traversal
+  (make-traversal
+   #:getter sequence->list
+   #:setter (λ (_ replacements) (list->immutable-string replacements))
+   #:counter string-length
+   #:name enclosing-variable-name))
+
 (module+ test
   (test-case (name-string traversal-set-all)
     (define (set-too-many)
@@ -116,7 +131,22 @@
     (check-equal? vec (vector 1 2 3))
     (check-not-equal? result-vec vec)
     (check-pred immutable? result-vec)
-    (check-equal? result-vec (immutable-vector 4 5 6))))
+    (check-equal? result-vec (immutable-vector 4 5 6)))
+
+  (test-case (name-string string-traversal)
+    (check-equal? (traversal-count string-traversal "hello") 5)
+    (check-equal? (traversal-count string-traversal (string #\a #\b #\c)) 3)
+    (check-equal?
+     (traversal-get-all string-traversal "hello") (list #\h #\e #\l #\l #\o))
+    (check-equal?
+     (traversal-get-all string-traversal (string #\a #\b #\c))
+     (list #\a #\b #\c))
+    (define str (string #\a #\b #\c))
+    (define result-str (traversal-set-all string-traversal str "foo"))
+    (check-equal? str "abc")
+    (check-not-equal? result-str str)
+    (check-pred immutable? result-str)
+    (check-equal? result-str "foo")))
 
 ;@------------------------------------------------------------------------------
 ;; Contracts
@@ -226,3 +256,91 @@
      #:first-order traversal?
      #:late-neg-projection projection))
   the-contract)
+
+;@------------------------------------------------------------------------------
+;; More traversals
+
+(define/name identity-traversal
+  (make-traversal
+   #:getter list
+   #:setter (λ (_ replacements) (list-first replacements))
+   #:counter (λ (_) 1)
+   #:name enclosing-variable-name))
+
+(define (traversal-pipe-getter outer-traversal inner-traversal)
+  (define outer-getter (traversal-getter outer-traversal))
+  (define inner-getter (traversal-getter inner-traversal))
+  (λ (subject)
+    (transduce (outer-getter subject)
+               (append-mapping inner-getter)
+               #:into into-list)))
+
+(define-tuple-type setter-state (index traversed-subject))
+(define initial-state (setter-state 0 empty-list))
+
+(define (traversal-pipe-setter outer-traversal inner-traversal)
+  (define outer-getter (traversal-getter outer-traversal))
+  (define outer-setter (traversal-setter outer-traversal))
+  (define inner-setter (traversal-setter inner-traversal))
+  (define inner-counter (traversal-counter inner-traversal))
+  (λ (subject replacements)
+    (define outer-replacements
+      (transduce
+       (outer-getter subject)
+       (folding
+        (λ (state inner-subject)
+          (define count (inner-counter inner-subject))
+          (define previous-index (setter-state-index state))
+          (define next-index (+ previous-index count))
+          (define inner-replacements
+            (sublist replacements previous-index next-index))
+          (define traversed (inner-setter inner-subject inner-replacements))
+          (setter-state next-index traversed))
+        (setter-state 0 #f))
+       (mapping setter-state-traversed-subject)
+       #:into into-list))
+    (outer-setter subject outer-replacements)))
+
+(define (traversal-pipe-counter outer-traversal inner-traversal)
+  (define outer-getter (traversal-getter outer-traversal))
+  (define inner-counter (traversal-counter inner-traversal))
+  (λ (subject)
+    (transduce (outer-getter subject) (mapping inner-counter) #:into into-sum)))
+
+(define (traversal-pipe2 outer-traversal inner-traversal)
+  (define getter (traversal-pipe-getter outer-traversal inner-traversal))
+  (define setter (traversal-pipe-setter outer-traversal inner-traversal))
+  (define counter (traversal-pipe-counter outer-traversal inner-traversal))
+  (make-traversal
+   #:getter getter #:setter setter #:counter counter #:name 'piped))
+
+(define (traversal-pipe . traversales)
+  (match traversales
+    ['() identity-traversal]
+    [(list traversal) traversal]
+    [(cons first-traversal remaining-traversales)
+     (for/fold ([piped first-traversal]) ([traversal remaining-traversales])
+       (traversal-pipe2 piped traversal))]))
+
+(define (sublist list start end)
+  (take (drop list start) (- end start)))
+
+(module+ test
+  (test-case (name-string traversal-pipe)
+
+    (test-case "no traversals"
+      (check-equal? (traversal-pipe) identity-traversal))
+
+    (test-case "one traversal"
+      (check-equal? (traversal-pipe string-traversal) string-traversal))
+
+    (test-case "two traversals"
+      (define string-list-traversal
+        (traversal-pipe list-traversal string-traversal))
+      (define fruits (list "apple" "coconut" "plum"))
+      (check-equal?
+       (traversal-get-all string-list-traversal fruits)
+       (list #\a #\p #\p #\l #\e #\c #\o #\c #\o #\n #\u #\t #\p #\l #\u #\m))
+      (check-equal?
+       (traversal-set-all string-list-traversal fruits "AppleCoconutPlum")
+       (list "Apple" "Coconut" "Plum")))))
