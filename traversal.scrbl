@@ -3,6 +3,7 @@
 @(require (for-label glass/lens
                      glass/prism
                      glass/traversal
+                     racket/base
                      racket/contract/base
                      racket/list
                      rebellion/base/result
