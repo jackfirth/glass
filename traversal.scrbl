@@ -62,6 +62,15 @@ exactly 10 replacement foci.
    (traversal-get-all player-coordinates (player "Catherine" 2 7))
    (traversal-set-all player-coordinates (player "Catherine" 2 7) (list 0 0)))}
 
+@defproc[(traversal/c [subject-contract contract?] [foci-contract contract?])
+         contract?]{
+ A @reference-tech{contract combinator} for @tech{traversals}. Creates a
+ contract that accepts traversals whose subjects are checked with
+ @racket[subject-contract] and whose foci are checked with
+ @racket[foci-contract].}
+
+@section{Using Traversals}
+
 @defproc[(traversal-get-all [traversal traversal?] [subject any/c]) list?]{
  Traverses @racket[subject] with @racket[traversal] and returns a list of the
  traversal's foci.}
@@ -98,12 +107,15 @@ exactly 10 replacement foci.
    #:eval (make-evaluator) #:once
    (traversal-clear string-traversal "hello" #\x))}
 
-@defproc[(traversal/c [subject-contract contract?] [foci-contract contract?])
-         contract?]{
- A @reference-tech{contract combinator} for @tech{traversals}. Creates a
- contract that accepts traversals whose subjects are checked with
- @racket[subject-contract] and whose foci are checked with
- @racket[foci-contract].}
+@section{Predefined Traversals}
+
+@defthing[list-traversal (traversal/c list? any/c)]{
+ A @tech{traversal} that traverses the elements of a list.}
+
+@defthing[vector-traversal (traversal/c vector? any/c)]{
+ A @tech{traversal} that traverses the elements of a vector. The traversal
+ accepts both mutable and immutable vectors, but it only produces immutable
+ vectors.}
 
 @defthing[string-traversal (traversal/c string? char?)]{
  A @tech{traversal} that traverses the characters of a string. The traversal
@@ -115,6 +127,34 @@ exactly 10 replacement foci.
    (traversal-count string-traversal "hello")
    (traversal-get-all string-traversal "hello"))}
 
+@defthing[identity-traversal traversal?]{
+ The identity @tech{traversal}. Traverses only one element of the subject, and
+ that element is the subject itself.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (traversal-get-all identity-traversal 6)
+   (traversal-set-all identity-traversal 6 (list 100)))}
+
+@section{More Traversal Constructors}
+
+@defproc[(traversal-pipe [traversal traversal?] ...) traversal?]{
+ Joins each @racket[traversal] to the next, building a composed traversal that
+ traverses subjects by traversing the subject with the first traversal, then
+ traversing each of those traversed elements with the second traversal, and so
+ on for each traversal in left-to-right order. If only one @racket[traversal] is
+ given, it is returned directly. If no traversals are given,
+ @racket[identity-traversal] is returned.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (eval:no-prompt
+    (define list-of-strings-traversal
+      (traversal-pipe list-traversal string-traversal))
+    (define strings (list "hello" "darkness" "my" "old" "friend")))
+   (traversal-map list-of-strings-traversal strings char-upcase)
+   (traversal-clear list-of-strings-traversal strings #\-))}
+ 
 @defproc[(lens->traversal [lens lens?]) traversal?]{
  Converts @racket[lens] into a @tech{traversal} that always focuses on exactly
  one part of the subject using @racket[lens].
