@@ -21,7 +21,8 @@
   [string-traversal (traversal/c string? char?)]
   [lens->traversal (-> lens? traversal?)]
   [prism->traversal (-> prism? traversal?)]
-  [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]))
+  [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]
+  [traversal-clear (-> traversal? any/c any/c any/c)]))
 
 (require glass/lens
          glass/prism
@@ -369,10 +370,12 @@
     (match (prism-match prism subject)
       [(present focus) (list focus)]
       [(== absent) empty-list]))
-  (define (set-all _ replacements)
-    (prism-cast prism (list-first replacements)))
+  (define (set-all subject replacements)
+    (match (prism-match prism subject)
+      [(? present?) (prism-cast prism (list-first replacements))]
+      [(== absent) subject]))
   (define (count subject)
-    (match (prism-match prism subject) [(present _) 1] [(== absent) 0]))
+    (match (prism-match prism subject) [(? present?) 1] [(== absent) 0]))
   (make-traversal
    #:getter get-all
    #:setter set-all
@@ -385,17 +388,19 @@
     (check-equal? (traversal-get-all traversal (pair 1 2)) (list 1))
     (check-equal? (traversal-set-all traversal (pair 1 2) (list 5)) (pair 5 2))
     (check-equal? (traversal-count traversal (pair 1 2)) 1)
-    (check-equal? (object-name traversal) (name-string pair.first)))
+    (check-equal? (object-name traversal) (name pair.first)))
 
   (test-case (name-string prism->traversal)
     (define traversal (prism->traversal success-prism))
     (check-equal? (traversal-get-all traversal (success 123)) (list 123))
     (check-equal? (traversal-get-all traversal (failure "foo")) empty-list)
-    (check-equal? (traversal-set-all traversal (success 123) 5) (success 5))
+    (check-equal?
+     (traversal-set-all traversal (success 123) (list 5)) (success 5))
     (check-equal?
      (traversal-set-all traversal (failure "foo") empty-list) (failure "foo"))
     (check-equal? (traversal-count traversal (success 123)) 1)
-    (check-equal? (traversal-count traversal (failure "foo")) 0)))
+    (check-equal? (traversal-count traversal (failure "foo")) 0)
+    (check-equal? (object-name traversal) (name success-prism))))
 
 
 (define (traversal-map traversal subject mapper)
@@ -405,6 +410,13 @@
                #:into into-list))
   (traversal-set-all traversal subject replacements))
 
+(define (traversal-clear traversal subject replacement)
+  (define count (traversal-count traversal subject))
+  (traversal-set-all traversal subject (make-list count replacement)))
+
 (module+ test
   (test-case (name-string traversal-map)
-    (check-equal? (traversal-map string-traversal "foo" char-upcase) "FOO")))
+    (check-equal? (traversal-map string-traversal "foo" char-upcase) "FOO"))
+
+  (test-case (name-string traversal-clear)
+    (check-equal? (traversal-clear string-traversal "foo" #\x) "xxx")))

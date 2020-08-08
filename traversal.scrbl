@@ -75,12 +75,42 @@ exactly 10 replacement foci.
  Traverses @racket[subject] with @racket[traversal] and counts the traversal's
  foci.}
 
+@defproc[(traversal-map
+          [traversal traversal?] [subject any/c] [mapper (-> any/c any/c)])
+         any/c]{
+ Traverses @racket[subject] with @racket[traversal] and updates each focus with
+ @racket[mapper], returning a new subject with the updated foci.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (traversal-map string-traversal "hello" char-upcase))}
+
+@defproc[(traversal-clear
+          [traversal traversal?] [subject any/c] [replacement any/c])
+         any/c]{
+ Traverses @racket[subject] with @racket[traversal] and sets each focus to
+ @racket[replacement], returning a new subject with the updated foci.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (traversal-clear string-traversal "hello" #\x))}
+
 @defproc[(traversal/c [subject-contract contract?] [foci-contract contract?])
          contract?]{
  A @reference-tech{contract combinator} for @tech{traversals}. Creates a
  contract that accepts traversals whose subjects are checked with
  @racket[subject-contract] and whose foci are checked with
  @racket[foci-contract].}
+
+@defthing[string-traversal (traversal/c string? char?)]{
+ A @tech{traversal} that traverses the characters of a string. The traversal
+ accepts both mutable and immutable strings, but it only produces immutable
+ strings.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (traversal-count string-traversal "hello")
+   (traversal-get-all string-traversal "hello"))}
 
 @defproc[(lens->traversal [lens lens?]) traversal?]{
  Converts @racket[lens] into a @tech{traversal} that always focuses on exactly
