@@ -7,6 +7,7 @@
                      racket/contract/base
                      racket/list
                      racket/math
+                     racket/sequence
                      rebellion/base/result
                      rebellion/base/symbol
                      rebellion/collection/entry
