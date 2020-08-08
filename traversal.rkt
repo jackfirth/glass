@@ -19,15 +19,20 @@
   [list-traversal (traversal/c list? any/c)]
   [vector-traversal (traversal/c vector? any/c)]
   [string-traversal (traversal/c string? char?)]
+  [lens->traversal (-> lens? traversal?)]
+  [prism->traversal (-> prism? traversal?)]
   [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]))
 
-(require racket/bool
+(require glass/lens
+         glass/prism
+         racket/bool
          racket/contract/combinator
          racket/list
          racket/match
          racket/math
          racket/sequence
          rebellion/base/immutable-string
+         rebellion/base/option
          rebellion/base/symbol
          rebellion/collection/immutable-vector
          rebellion/collection/list
@@ -41,7 +46,9 @@
 
 (module+ test
   (require (submod "..")
-           rackunit))
+           rackunit
+           rebellion/base/pair
+           rebellion/base/result))
 
 ;@------------------------------------------------------------------------------
 
@@ -345,6 +352,51 @@
       (check-equal?
        (traversal-set-all string-list-traversal fruits "AppleCoconutPlum")
        (list "Apple" "Coconut" "Plum")))))
+
+
+(define (lens->traversal lens)
+  (define (get-all subject) (list (lens-get lens subject)))
+  (define (set-all subject replacements)
+    (lens-set lens subject (list-first replacements)))
+  (make-traversal
+   #:getter get-all
+   #:setter set-all
+   #:counter (λ (_) 1)
+   #:name (object-name lens)))
+
+(define (prism->traversal prism)
+  (define (get-all subject)
+    (match (prism-match prism subject)
+      [(present focus) (list focus)]
+      [(== absent) empty-list]))
+  (define (set-all _ replacements)
+    (prism-cast prism (list-first replacements)))
+  (define (count subject)
+    (match (prism-match prism subject) [(present _) 1] [(== absent) 0]))
+  (make-traversal
+   #:getter get-all
+   #:setter set-all
+   #:counter count
+   #:name (object-name prism)))
+
+(module+ test
+  (test-case (name-string lens->traversal)
+    (define traversal (lens->traversal pair.first))
+    (check-equal? (traversal-get-all traversal (pair 1 2)) (list 1))
+    (check-equal? (traversal-set-all traversal (pair 1 2) (list 5)) (pair 5 2))
+    (check-equal? (traversal-count traversal (pair 1 2)) 1)
+    (check-equal? (object-name traversal) (name-string pair.first)))
+
+  (test-case (name-string prism->traversal)
+    (define traversal (prism->traversal success-prism))
+    (check-equal? (traversal-get-all traversal (success 123)) (list 123))
+    (check-equal? (traversal-get-all traversal (failure "foo")) empty-list)
+    (check-equal? (traversal-set-all traversal (success 123) 5) (success 5))
+    (check-equal?
+     (traversal-set-all traversal (failure "foo") empty-list) (failure "foo"))
+    (check-equal? (traversal-count traversal (success 123)) 1)
+    (check-equal? (traversal-count traversal (failure "foo")) 0)))
+
 
 (define (traversal-map traversal subject mapper)
   (define replacements

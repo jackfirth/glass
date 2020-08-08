@@ -165,16 +165,4 @@ transforms a replacement focus back into the subject.
 @defproc[(prism? [v any/c]) boolean?]{
  A predicate for @tech{prisms}.}
 
-@section{Traversals}
-@defmodule[glass/traversal]
-
-A @deftech{traversal} is a type of @tech{optic} for focusing on several parts of
-a subject at once. A traversal is built from a getter function, which extracts a
-list of foci from the subject, and a setter function, which takes a subject and
-a list of replacement foci and builds a new subject. Traversals are not allowed
-to change the number of foci when replacing them: if a traversal's getter views
-10 foci in a subject, then the traversal's setter will only accept lists of
-exactly 10 replacement foci.
-
-@defproc[(traversal? [v any/c]) boolean?]{
- A predicate for @tech{traversals}.}
+@include-section[(lib "glass/traversal.scrbl")]
