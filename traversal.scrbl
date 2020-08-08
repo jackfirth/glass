@@ -9,6 +9,7 @@
                      rebellion/base/result
                      rebellion/base/symbol
                      rebellion/collection/entry
+                     rebellion/collection/list
                      rebellion/type/tuple)
           (submod glass/private/scribble-cross-document-tech doc)
           (submod glass/private/scribble-evaluator-factory doc)
@@ -42,7 +43,8 @@ exactly 10 replacement foci.
 @defproc[(make-traversal
           [#:getter getter (-> any/c list?)]
           [#:setter setter (-> any/c list? any/c)]
-          [#:counter counter (-> any/c natural?)]
+          [#:counter counter (-> any/c natural?)
+           (λ (suject) (list-size (getter subject)))]
           [#:name name (or/c interned-symbol? #f) #f])
          traversal?]{
  Constructs a @tech{traversal} named @racket[name].
