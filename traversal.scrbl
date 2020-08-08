@@ -109,6 +109,14 @@ exactly 10 replacement foci.
    #:eval (make-evaluator) #:once
    (traversal-clear string-traversal "hello" #\x))}
 
+@defproc[(traversal-reverse [traversal traversal?] [subject any/c]) any/c]{
+ Traverses @racket[subject] with @racket[traversal] and reverses the order of
+ the traversed foci, returning a new subject with the reversed foci.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (traversal-reverse string-traversal "hello"))}
+
 @section{Predefined Traversals}
 
 @defthing[list-traversal (traversal/c list? any/c)]{
@@ -155,8 +163,23 @@ exactly 10 replacement foci.
       (traversal-pipe list-traversal string-traversal))
     (define strings (list "hello" "darkness" "my" "old" "friend")))
    (traversal-map list-of-strings-traversal strings char-upcase)
-   (traversal-clear list-of-strings-traversal strings #\-))}
- 
+   (traversal-clear list-of-strings-traversal strings #\-)
+   (traversal-reverse list-of-strings-traversal strings))}
+
+@defproc[(subtraversal
+          [traversal traversal?]
+          [inclusive-start natural?]
+          [exclusive-end (or/c natural? #f) #f])
+         traversal?]{
+ Limits @racket[traversal] to only operate on the elements between
+ @racket[inclusive-start] and @racket[exclusive-end]. If @racket[exclusive-end]
+ is false, the subtraversal includes all elements after
+ @racket[inclusive-start].
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (traversal-clear (subtraversal string-traversal 2 8) "hello world" #\_))}
+
 @defproc[(lens->traversal [lens lens?]) traversal?]{
  Converts @racket[lens] into a @tech{traversal} that always focuses on exactly
  one part of the subject using @racket[lens].

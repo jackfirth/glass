@@ -16,6 +16,13 @@
   [traversal-get-all (-> traversal? any/c list?)]
   [traversal-set-all (-> traversal? any/c (sequence/c any/c) any/c)]
   [traversal-pipe (-> traversal? ... traversal?)]
+  [subtraversal
+   (->i ([traversal traversal?]
+         [inclusive-start natural?])
+        ([exclusive-end
+          (inclusive-start)
+          (or/c (and/c natural? (>=/c inclusive-start)) #f)])
+        [_ traversal?])]
   [list-traversal (traversal/c list? any/c)]
   [vector-traversal (traversal/c vector? any/c)]
   [string-traversal (traversal/c string? char?)]
@@ -23,7 +30,8 @@
   [lens->traversal (-> lens? traversal?)]
   [prism->traversal (-> prism? traversal?)]
   [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]
-  [traversal-clear (-> traversal? any/c any/c any/c)]))
+  [traversal-clear (-> traversal? any/c any/c any/c)]
+  [traversal-reverse (-> traversal? any/c any/c)]))
 
 (require glass/lens
          glass/prism
@@ -332,8 +340,10 @@
      (for/fold ([piped first-traversal]) ([traversal remaining-traversales])
        (traversal-pipe2 piped traversal))]))
 
-(define (sublist list start end)
-  (take (drop list start) (- end start)))
+(define (sublist list start [end #f])
+  (if end
+      (take (drop list start) (- end start))
+      (drop list start)))
 
 (module+ test
   (test-case (name-string traversal-pipe)
@@ -354,6 +364,28 @@
       (check-equal?
        (traversal-set-all string-list-traversal fruits "AppleCoconutPlum")
        (list "Apple" "Coconut" "Plum")))))
+
+
+(define/name (subtraversal traversal start [end #f])
+  (define getter (traversal-getter traversal))
+  (define setter (traversal-setter traversal))
+  (define (get-all subject) (sublist (getter subject) start end))
+  (define (set-all subject subreplacements)
+    (define originals (getter subject))
+    (define replacements
+      (list-append
+       (take originals start)
+       subreplacements
+       (if end (drop originals end) empty-list)))
+    (setter subject replacements))
+  (make-traversal
+   #:getter get-all #:setter set-all #:name enclosing-function-name))
+
+(module+ test
+  (test-case (name-string subtraversal)
+    (define traversal (subtraversal string-traversal 2 6))
+    (check-equal?
+     (traversal-map traversal "abracadabra" char-upcase) "abRACAdabra")))
 
 
 (define (lens->traversal lens)
@@ -415,9 +447,16 @@
   (define count (traversal-count traversal subject))
   (traversal-set-all traversal subject (make-list count replacement)))
 
+(define (traversal-reverse traversal subject)
+  (define reversed (list-reverse (traversal-get-all traversal subject)))
+  (traversal-set-all traversal subject reversed))
+
 (module+ test
   (test-case (name-string traversal-map)
     (check-equal? (traversal-map string-traversal "foo" char-upcase) "FOO"))
 
   (test-case (name-string traversal-clear)
-    (check-equal? (traversal-clear string-traversal "foo" #\x) "xxx")))
+    (check-equal? (traversal-clear string-traversal "foo" #\x) "xxx"))
+
+  (test-case (name-string traversal-reverse)
+    (check-equal? (traversal-reverse string-traversal "hello") "olleh")))
