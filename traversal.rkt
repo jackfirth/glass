@@ -19,6 +19,7 @@
   [list-traversal (traversal/c list? any/c)]
   [vector-traversal (traversal/c vector? any/c)]
   [string-traversal (traversal/c string? char?)]
+  [identity-traversal traversal?]
   [lens->traversal (-> lens? traversal?)]
   [prism->traversal (-> prism? traversal?)]
   [traversal-map (-> traversal? any/c (-> any/c any/c) any/c)]
