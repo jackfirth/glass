@@ -37,7 +37,6 @@
          glass/prism
          racket/bool
          racket/contract/combinator
-         racket/list
          racket/match
          racket/math
          racket/sequence
