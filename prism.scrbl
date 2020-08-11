@@ -28,6 +28,12 @@ transforms a replacement focus back into the subject.
 @defproc[(prism? [v any/c]) boolean?]{
  A predicate for @tech{prisms}.}
 
+@defproc[(prism/c [subject-contract contract?] [focus-contract contract?])
+         contract?]{
+ A @reference-tech{contract combinator} for @tech{prisms}. Creates a contract
+ that accepts prisms whose subjects are checked with @racket[subject-contract]
+ and whose foci are checked with @racket[focus-contract].}
+
 @defproc[(make-prism
           [matcher (-> any/c option?)]
           [caster (-> any/c any/c)]
@@ -69,3 +75,15 @@ transforms a replacement focus back into the subject.
  @(examples
    #:eval (make-evaluator) #:once
    (prism-cast success-prism 123))}
+
+@deftogether[[
+ @defthing[success-prism (prism/c result? any/c)]
+ @defthing[failure-prism (prism/c result? any/c)]]]{
+ Two @tech{prisms} which focus on successful and failed @rebellion-tech{result}
+ values, respectively.
+ 
+ @(examples
+   #:eval (make-evaluator) #:once
+   (prism-match success-prism (failure "kaboom!"))
+   (prism-match failure-prism (failure "kaboom!"))
+   (prism-cast failure-prism "kaboom!"))}
