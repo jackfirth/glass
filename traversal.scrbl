@@ -11,6 +11,7 @@
                      rebellion/base/result
                      rebellion/base/symbol
                      rebellion/collection/entry
+                     rebellion/collection/immutable-vector
                      rebellion/collection/list
                      rebellion/type/tuple)
           (submod glass/private/scribble-cross-document-tech doc)
@@ -25,6 +26,7 @@
                    'racket/list
                    'rebellion/base/result
                    'rebellion/collection/entry
+                   'rebellion/collection/immutable-vector
                    'rebellion/type/tuple)
     #:private (list 'racket/base)))
 
@@ -43,10 +45,10 @@ exactly 10 replacement foci.
  A predicate for @tech{traversals}.}
 
 @defproc[(make-traversal
-          [#:getter getter (-> any/c list?)]
-          [#:setter setter (-> any/c list? any/c)]
+          [#:getter getter (-> any/c immutable-vector?)]
+          [#:setter setter (-> any/c immutable-vector? any/c)]
           [#:counter counter (-> any/c natural?)
-           (λ (suject) (list-size (getter subject)))]
+           (λ (suject) (immutable-vector-length (getter subject)))]
           [#:name name (or/c interned-symbol? #f) #f])
          traversal?]{
  Constructs a @tech{traversal} named @racket[name].
@@ -57,8 +59,9 @@ exactly 10 replacement foci.
     (define-tuple-type player (name x y))
     (define player-coordinates
       (make-traversal
-       #:getter (λ (p) (list (player-x p) (player-y p)))
-       #:setter (λ (p xy) (player (player-name p) (first xy) (second xy)))
+       #:getter (λ (p) (immutable-vector (player-x p) (player-y p)))
+       #:setter
+       (λ (p xy) (player (player-name p) (vector-ref xy 0) (vector-ref xy 1)))
        #:counter (λ (_) 2)
        #:name 'player-coordinates)))
    (traversal-get-all player-coordinates (player "Catherine" 2 7))
@@ -73,7 +76,8 @@ exactly 10 replacement foci.
 
 @section{Using Traversals}
 
-@defproc[(traversal-get-all [traversal traversal?] [subject any/c]) list?]{
+@defproc[(traversal-get-all [traversal traversal?] [subject any/c])
+         immutable-vector?]{
  Traverses @racket[subject] with @racket[traversal] and returns a list of the
  traversal's foci.}
 

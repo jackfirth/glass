@@ -7,13 +7,13 @@
   [traversal? predicate/c]
   [traversal/c (-> contract? contract? contract?)]
   [make-traversal
-   (->* (#:getter (-> any/c list?)
-         #:setter (-> any/c list? any/c)
+   (->* (#:getter (-> any/c immutable-vector?)
+         #:setter (-> any/c immutable-vector? any/c)
          #:counter (-> any/c natural?))
         (#:name (or/c interned-symbol? #f))
         traversal?)]
   [traversal-count (-> traversal? any/c natural?)]
-  [traversal-get-all (-> traversal? any/c list?)]
+  [traversal-get-all (-> traversal? any/c immutable-vector?)]
   [traversal-set-all (-> traversal? any/c (sequence/c any/c) any/c)]
   [traversal-pipe (-> traversal? ... traversal?)]
   [subtraversal
@@ -41,9 +41,11 @@
          racket/match
          racket/math
          racket/sequence
+         racket/vector
          rebellion/base/immutable-string
          rebellion/base/option
          rebellion/base/symbol
+         rebellion/collection/vector
          rebellion/collection/immutable-vector
          rebellion/collection/list
          rebellion/private/contract-projection
@@ -68,7 +70,7 @@
 (define (make-traversal
          #:getter getter
          #:setter setter
-         #:counter [counter (λ (s) (sequence-length (getter s)))]
+         #:counter [counter (λ (s) (immutable-vector-length (getter s)))]
          #:name [name #f])
   (constructor:traversal
    #:getter (function-reduce-arity getter 1)
@@ -85,12 +87,12 @@
   ((traversal-counter traversal) subject))
 
 (define (traversal-get-all traversal subject)
-  (sequence->list ((traversal-getter traversal) subject)))
+  ((traversal-getter traversal) subject))
 
 (define/name (traversal-set-all traversal subject foci)
   (define original-count (traversal-count traversal subject))
-  (define foci-list (sequence->list foci))
-  (define replacement-count (list-size foci-list))
+  (define foci-vec (sequence->vector foci))
+  (define replacement-count (immutable-vector-length foci-vec))
   (unless (equal? replacement-count original-count)
     (raise-arguments-error
      enclosing-function-name
@@ -99,33 +101,38 @@
      "original count" original-count
      "replacement count" replacement-count
      "subject" subject))
-  ((traversal-setter traversal) subject foci-list))
+  ((traversal-setter traversal) subject foci-vec))
 
 (define/name list-traversal
   (make-traversal
-   #:getter values
-   #:setter (λ (_ replacements) replacements)
+   #:getter sequence->vector
+   #:setter (λ (_ replacements) (immutable-vector->list replacements))
    #:counter list-size
    #:name enclosing-variable-name))
 
 (define/name vector-traversal
   (make-traversal
-   #:getter sequence->list
-   #:setter (λ (_ replacements) (list->immutable-vector replacements))
+   #:getter vector->immutable-vector
+   #:setter (λ (_ replacements) replacements)
    #:counter vector-length
    #:name enclosing-variable-name))
 
 (define/name string-traversal
   (make-traversal
-   #:getter sequence->list
-   #:setter (λ (_ replacements) (list->immutable-string replacements))
+   #:getter sequence->vector
+   #:setter
+   (λ (_ replacements)
+     (build-immutable-string
+      (immutable-vector-length replacements)
+      (λ (i) (vector-ref replacements i))))
    #:counter string-length
    #:name enclosing-variable-name))
 
 (module+ test
   (test-case (name-string traversal-set-all)
     (define (set-too-many)
-      (traversal-set-all list-traversal (list 1 2 3) (list 4 5 6 7 8)))
+      (traversal-set-all
+       list-traversal (list 1 2 3) (immutable-vector 4 5 6 7 8)))
     (check-exn exn:fail:contract? set-too-many)
     (check-exn #rx"traversal-set-all" set-too-many)
     (check-exn #rx"original count: 3" set-too-many)
@@ -133,19 +140,24 @@
   
   (test-case (name-string list-traversal)
     (check-equal? (traversal-count list-traversal (list 1 2 3)) 3)
-    (check-equal? (traversal-get-all list-traversal (list 1 2 3)) (list 1 2 3))
     (check-equal?
-     (traversal-set-all list-traversal (list 1 2 3) (list 4 5 6)) (list 4 5 6)))
+     (traversal-get-all list-traversal (list 1 2 3)) (immutable-vector 1 2 3))
+    (check-equal?
+     (traversal-set-all list-traversal (list 1 2 3) (immutable-vector 4 5 6))
+     (list 4 5 6)))
 
   (test-case (name-string vector-traversal)
     (check-equal? (traversal-count vector-traversal (vector 1 2 3)) 3)
     (check-equal? (traversal-count vector-traversal (immutable-vector 1 2 3)) 3)
     (check-equal?
-     (traversal-get-all vector-traversal (vector 1 2 3)) (list 1 2 3))
+     (traversal-get-all vector-traversal (vector 1 2 3))
+     (immutable-vector 1 2 3))
     (check-equal?
-     (traversal-get-all vector-traversal (immutable-vector 1 2 3)) (list 1 2 3))
+     (traversal-get-all vector-traversal (immutable-vector 1 2 3))
+     (immutable-vector 1 2 3))
     (define vec (vector 1 2 3))
-    (define result-vec (traversal-set-all vector-traversal vec (list 4 5 6)))
+    (define result-vec
+      (traversal-set-all vector-traversal vec (immutable-vector 4 5 6)))
     (check-equal? vec (vector 1 2 3))
     (check-not-equal? result-vec vec)
     (check-pred immutable? result-vec)
@@ -155,10 +167,11 @@
     (check-equal? (traversal-count string-traversal "hello") 5)
     (check-equal? (traversal-count string-traversal (string #\a #\b #\c)) 3)
     (check-equal?
-     (traversal-get-all string-traversal "hello") (list #\h #\e #\l #\l #\o))
+     (traversal-get-all string-traversal "hello")
+     (immutable-vector #\h #\e #\l #\l #\o))
     (check-equal?
      (traversal-get-all string-traversal (string #\a #\b #\c))
-     (list #\a #\b #\c))
+     (immutable-vector #\a #\b #\c))
     (define str (string #\a #\b #\c))
     (define result-str (traversal-set-all string-traversal str "foo"))
     (check-equal? str "abc")
@@ -194,7 +207,7 @@
     (function-impersonate
      getter
      #:arguments-guard subject-input-guard
-     #:results-guard (λ (foci) (map foci-output-guard foci))
+     #:results-guard (λ (foci) (immutable-vector-map foci-output-guard foci))
      #:application-marks get-marks
      #:chaperone? chaperone?))
   (define impersonated-setter
@@ -203,7 +216,7 @@
      #:arguments-guard
      (λ (subject replacement-foci)
        (values (subject-input-guard subject)
-               (map foci-input-guard replacement-foci)))
+               (immutable-vector-map foci-input-guard replacement-foci)))
      #:results-guard subject-output-guard
      #:application-marks set-marks
      #:chaperone? chaperone?))
@@ -280,8 +293,8 @@
 
 (define/name identity-traversal
   (make-traversal
-   #:getter list
-   #:setter (λ (_ replacements) (list-first replacements))
+   #:getter immutable-vector
+   #:setter (λ (_ replacements) (immutable-vector-ref replacements 0))
    #:counter (λ (_) 1)
    #:name enclosing-variable-name))
 
@@ -291,10 +304,10 @@
   (λ (subject)
     (transduce (outer-getter subject)
                (append-mapping inner-getter)
-               #:into into-list)))
+               #:into (into-vector))))
 
 (define-tuple-type setter-state (index traversed-subject))
-(define initial-state (setter-state 0 empty-list))
+(define initial-state (setter-state 0 #f))
 
 (define (traversal-pipe-setter outer-traversal inner-traversal)
   (define outer-getter (traversal-getter outer-traversal))
@@ -302,21 +315,22 @@
   (define inner-setter (traversal-setter inner-traversal))
   (define inner-counter (traversal-counter inner-traversal))
   (λ (subject replacements)
+    (define outer-originals (outer-getter subject))
     (define outer-replacements
       (transduce
-       (outer-getter subject)
+       outer-originals
        (folding
         (λ (state inner-subject)
           (define count (inner-counter inner-subject))
           (define previous-index (setter-state-index state))
           (define next-index (+ previous-index count))
           (define inner-replacements
-            (sublist replacements previous-index next-index))
+            (subvector replacements previous-index next-index))
           (define traversed (inner-setter inner-subject inner-replacements))
           (setter-state next-index traversed))
-        (setter-state 0 #f))
+        initial-state)
        (mapping setter-state-traversed-subject)
-       #:into into-list))
+       #:into (into-vector #:size (vector-length outer-originals))))
     (outer-setter subject outer-replacements)))
 
 (define (traversal-pipe-counter outer-traversal inner-traversal)
@@ -340,10 +354,9 @@
      (for/fold ([piped first-traversal]) ([traversal remaining-traversales])
        (traversal-pipe2 piped traversal))]))
 
-(define (sublist list start [end #f])
-  (if end
-      (take (drop list start) (- end start))
-      (drop list start)))
+(define (subvector vector start [end #f])
+  (define actual-end (or end (immutable-vector-length vector)))
+  (immutable-vector-copy vector start actual-end))
 
 (module+ test
   (test-case (name-string traversal-pipe)
@@ -360,7 +373,8 @@
       (define fruits (list "apple" "coconut" "plum"))
       (check-equal?
        (traversal-get-all string-list-traversal fruits)
-       (list #\a #\p #\p #\l #\e #\c #\o #\c #\o #\n #\u #\t #\p #\l #\u #\m))
+       (immutable-vector
+        #\a #\p #\p #\l #\e #\c #\o #\c #\o #\n #\u #\t #\p #\l #\u #\m))
       (check-equal?
        (traversal-set-all string-list-traversal fruits "AppleCoconutPlum")
        (list "Apple" "Coconut" "Plum")))))
@@ -369,15 +383,12 @@
 (define/name (subtraversal traversal start [end #f])
   (define getter (traversal-getter traversal))
   (define setter (traversal-setter traversal))
-  (define (get-all subject) (sublist (getter subject) start end))
+  (define (get-all subject) (subvector (getter subject) start end))
   (define (set-all subject subreplacements)
     (define originals (getter subject))
-    (define replacements
-      (list-append
-       (take originals start)
-       subreplacements
-       (if end (drop originals end) empty-list)))
-    (setter subject replacements))
+    (define mutable-replacements (vector-copy originals))
+    (vector-copy! mutable-replacements start subreplacements)
+    (setter subject (vector->immutable-vector mutable-replacements)))
   (make-traversal
    #:getter get-all #:setter set-all #:name enclosing-function-name))
 
@@ -389,9 +400,9 @@
 
 
 (define (lens->traversal lens)
-  (define (get-all subject) (list (lens-get lens subject)))
+  (define (get-all subject) (immutable-vector (lens-get lens subject)))
   (define (set-all subject replacements)
-    (lens-set lens subject (list-first replacements)))
+    (lens-set lens subject (vector-ref replacements 0)))
   (make-traversal
    #:getter get-all
    #:setter set-all
@@ -401,11 +412,11 @@
 (define (prism->traversal prism)
   (define (get-all subject)
     (match (prism-match prism subject)
-      [(present focus) (list focus)]
-      [(== absent) empty-list]))
+      [(present focus) (immutable-vector focus)]
+      [(== absent) empty-immutable-vector]))
   (define (set-all subject replacements)
     (match (prism-match prism subject)
-      [(? present?) (prism-cast prism (list-first replacements))]
+      [(? present?) (prism-cast prism (vector-ref replacements 0))]
       [(== absent) subject]))
   (define (count subject)
     (match (prism-match prism subject) [(? present?) 1] [(== absent) 0]))
@@ -418,37 +429,58 @@
 (module+ test
   (test-case (name-string lens->traversal)
     (define traversal (lens->traversal pair.first))
-    (check-equal? (traversal-get-all traversal (pair 1 2)) (list 1))
-    (check-equal? (traversal-set-all traversal (pair 1 2) (list 5)) (pair 5 2))
+    (check-equal? (traversal-get-all traversal (pair 1 2)) (immutable-vector 1))
+    (check-equal?
+     (traversal-set-all traversal (pair 1 2) (immutable-vector 5)) (pair 5 2))
     (check-equal? (traversal-count traversal (pair 1 2)) 1)
     (check-equal? (object-name traversal) (name pair.first)))
 
   (test-case (name-string prism->traversal)
     (define traversal (prism->traversal success-prism))
-    (check-equal? (traversal-get-all traversal (success 123)) (list 123))
-    (check-equal? (traversal-get-all traversal (failure "foo")) empty-list)
     (check-equal?
-     (traversal-set-all traversal (success 123) (list 5)) (success 5))
+     (traversal-get-all traversal (success 123)) (immutable-vector 123))
     (check-equal?
-     (traversal-set-all traversal (failure "foo") empty-list) (failure "foo"))
+     (traversal-get-all traversal (failure "foo")) empty-immutable-vector)
+    (check-equal?
+     (traversal-set-all traversal (success 123) (immutable-vector 5))
+     (success 5))
+    (check-equal?
+     (traversal-set-all traversal (failure "foo") empty-immutable-vector)
+     (failure "foo"))
     (check-equal? (traversal-count traversal (success 123)) 1)
     (check-equal? (traversal-count traversal (failure "foo")) 0)
     (check-equal? (object-name traversal) (name success-prism))))
 
 
 (define (traversal-map traversal subject mapper)
+  (define originals (traversal-get-all traversal subject))
   (define replacements
-    (transduce (traversal-get-all traversal subject)
+    (transduce originals
                (mapping mapper)
-               #:into into-list))
+               #:into (into-vector #:size (vector-length originals))))
   (traversal-set-all traversal subject replacements))
 
 (define (traversal-clear traversal subject replacement)
   (define count (traversal-count traversal subject))
-  (traversal-set-all traversal subject (make-list count replacement)))
+  (define replacements (make-immutable-vector count replacement))
+  (traversal-set-all traversal subject replacements))
+
+(define in-descending-range
+  (case-lambda
+    [(end) (in-range (sub1 end) -1 -1)]
+    [(start end) (in-range (sub1 end) (sub1 start) -1)]))
+
+(module+ test
+  (test-case (name-string in-descending-range)
+    (check-equal? (sequence->list (in-descending-range 4)) (list 3 2 1 0))
+    (check-equal? (sequence->list (in-descending-range 3 8)) (list 7 6 5 4 3))))
 
 (define (traversal-reverse traversal subject)
-  (define reversed (list-reverse (traversal-get-all traversal subject)))
+  (define originals (traversal-get-all traversal subject))
+  (define count (vector-length originals))
+  (define reversed
+    (for/vector #:length count ([i (in-descending-range count)])
+      (vector-ref originals i)))
   (traversal-set-all traversal subject reversed))
 
 (module+ test
