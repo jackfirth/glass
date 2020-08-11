@@ -60,6 +60,15 @@ the focus and builds a new subject.
  Updates @racket[subject] with @racket[lens] by replacing its focus with
  @racket[replacement], returning an updated subject.}
 
+@defproc[(lens-map [lens lens?] [subject any/c] [mapper (-> any/c any/c)])
+         any/c]{
+ Updates @racket[subject] with @racket[lens] by applying @racket[mapper] to its
+ focus, returning an updated subject with the mapped focus.
+
+ @(examples
+   #:eval (make-evaluator) #:once
+   (lens-map entry.value (entry 'a 16) sqrt))}
+
 @defproc[(lens/c [subject-contract contract?] [focus-contract contract?])
          contract?]{
  A @reference-tech{contract combinator} for @tech[#:key "lens"]{lenses}. Creates

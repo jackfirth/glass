@@ -11,6 +11,7 @@
         lens?)]
   [lens-get (-> lens? any/c any/c)]
   [lens-set (-> lens? any/c any/c any/c)]
+  [lens-map (-> lens? any/c (-> any/c any/c) any/c)]
   [lens/c (-> contract? contract? contract?)]
   [lens-pipe (-> lens? ... lens?)]
   [pair.first (lens/c pair? any/c)]
@@ -353,3 +354,13 @@
     (check-equal?
      (lens-set byte.third-bit (byte 1 1 1 1 0 0 0 0) 1)
      (byte 1 1 1 1 0 0 0 0))))
+
+;@------------------------------------------------------------------------------
+;; More ways of using lenses
+
+(define (lens-map lens subject mapper)
+  (lens-set lens subject (mapper (lens-get lens subject))))
+
+(module+ test
+  (test-case (name-string lens-map)
+    (check-equal? (lens-map pair.first (pair 4 7) -) (pair -4 7))))
