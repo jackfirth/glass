@@ -9,8 +9,9 @@
               "glass")))
 
 (define deps
-  (list "rebellion"
-        "base"))
+  (list "base"
+        "fancy-app"
+        "rebellion"))
 
 (define build-deps
   (list "racket-doc"
